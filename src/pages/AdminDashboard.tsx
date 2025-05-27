@@ -10,16 +10,17 @@ import { Plus, Upload, Mail, Instagram, Sparkles, Trash2, Link, User } from 'luc
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import AdminLayout from '../components/AdminLayout';
-import { mockReels } from '../data/mockReels';
 import { suggestTags } from '../services/aiService';
-import { extractInstagramData, syncInstagramProfile } from '../services/instagramService';
+import { extractInstagramData } from '../services/instagramService';
+import { fetchReelsFromDatabase, syncInstagramProfile, deleteReel, DatabaseReel } from '../services/reelService';
 
 const AdminDashboard = () => {
   const { isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   
-  const [reels, setReels] = useState(mockReels);
+  const [reels, setReels] = useState<DatabaseReel[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isAddingReel, setIsAddingReel] = useState(false);
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -39,8 +40,28 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/admin/login');
+      return;
     }
+    
+    loadReels();
   }, [isAuthenticated, navigate]);
+
+  const loadReels = async () => {
+    try {
+      setIsLoading(true);
+      const data = await fetchReelsFromDatabase();
+      setReels(data);
+    } catch (error) {
+      console.error('Error loading reels:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load reels from database.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -140,7 +161,7 @@ const AdminDashboard = () => {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!formData.caption || !formData.productName || !formData.affiliateLink) {
@@ -152,35 +173,28 @@ const AdminDashboard = () => {
       return;
     }
 
-    const newReel = {
-      id: Date.now().toString(),
-      ...formData,
-      createdAt: new Date()
-    };
-
-    setReels(prev => [newReel, ...prev]);
-    setFormData({
-      caption: '',
-      thumbnail: '',
-      embedUrl: '',
-      productName: '',
-      affiliateLink: '',
-      tags: []
-    });
-    setIsAddingReel(false);
-    
+    // For manual reel addition, you would need to implement database insertion here
     toast({
-      title: "Reel added",
-      description: "Your reel has been successfully added to the showcase.",
+      title: "Manual reel addition",
+      description: "Manual reel addition would be implemented here. For now, use the Instagram sync feature.",
     });
   };
 
-  const handleDeleteReel = (id: string) => {
-    setReels(prev => prev.filter(reel => reel.id !== id));
-    toast({
-      title: "Reel deleted",
-      description: "The reel has been removed from your showcase.",
-    });
+  const handleDeleteReel = async (id: number) => {
+    try {
+      await deleteReel(id);
+      setReels(prev => prev.filter(reel => reel.id !== id));
+      toast({
+        title: "Reel deleted",
+        description: "The reel has been removed from your showcase.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete reel. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSyncInstagramProfile = async () => {
@@ -195,37 +209,23 @@ const AdminDashboard = () => {
 
     setIsSyncing(true);
     try {
-      // Get existing reel IDs to avoid duplicates
-      const existingReelIds = reels.map(reel => {
-        const match = reel.embedUrl.match(/\/p\/([A-Za-z0-9_-]+)/);
-        return match ? match[1] : null;
-      }).filter(Boolean) as string[];
-
-      const newReels = await syncInstagramProfile(instagramProfile, existingReelIds);
+      const result = await syncInstagramProfile(instagramProfile);
       
-      for (const reelData of newReels) {
-        // Generate tags for each new reel
-        const aiResponse = await suggestTags(reelData.caption);
+      if (result.success) {
+        // Reload reels from database
+        await loadReels();
         
-        const newReel = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-          caption: reelData.caption,
-          thumbnail: reelData.thumbnail,
-          embedUrl: reelData.embedUrl,
-          productName: aiResponse.productSuggestion || 'Featured Product',
-          affiliateLink: 'https://amazon.com/example-product',
-          tags: aiResponse.tags,
-          createdAt: new Date()
-        };
-
-        setReels(prev => [newReel, ...prev]);
+        toast({
+          title: "Profile sync completed",
+          description: result.message,
+        });
+        
+        setInstagramProfile(''); // Clear the input
+      } else {
+        throw new Error(result.error || 'Sync failed');
       }
-      
-      toast({
-        title: "Profile sync completed",
-        description: `Successfully synced ${newReels.length} new reels from @${instagramProfile}.`,
-      });
     } catch (error) {
+      console.error('Sync error:', error);
       toast({
         title: "Sync failed",
         description: "Failed to sync reels from Instagram profile. Please try again.",
@@ -247,6 +247,16 @@ const AdminDashboard = () => {
     return null;
   }
 
+  if (isLoading) {
+    return (
+      <AdminLayout title="Dashboard">
+        <div className="flex items-center justify-center min-h-96">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
+        </div>
+      </AdminLayout>
+    );
+  }
+
   return (
     <AdminLayout title="Dashboard">
       <div className="space-y-8">
@@ -261,7 +271,7 @@ const AdminDashboard = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-2xl font-bold">
-                {new Set(reels.flatMap(r => r.tags)).size}
+                {new Set(reels.flatMap(r => r.tags?.split(', ') || [])).size}
               </CardTitle>
               <CardDescription>Unique Tags</CardDescription>
             </CardHeader>
@@ -269,7 +279,7 @@ const AdminDashboard = () => {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-2xl font-bold">
-                {reels.length > 0 ? reels.filter(r => r.affiliateLink).length : 0}
+                {reels.filter(r => r.affiliate_link).length}
               </CardTitle>
               <CardDescription>Products Listed</CardDescription>
             </CardHeader>
@@ -492,10 +502,10 @@ const AdminDashboard = () => {
             <div className="space-y-4">
               {reels.map((reel) => (
                 <div key={reel.id} className="flex items-start space-x-4 p-4 border rounded-lg hover:bg-gray-50">
-                  {reel.thumbnail && (
+                  {reel.thumbnail_image_url && (
                     <img 
-                      src={reel.thumbnail} 
-                      alt={reel.productName}
+                      src={reel.thumbnail_image_url} 
+                      alt={reel.product_name}
                       className="w-16 h-24 object-cover rounded"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
@@ -504,15 +514,18 @@ const AdminDashboard = () => {
                     />
                   )}
                   <div className="flex-1 space-y-2">
-                    <h3 className="font-semibold">{reel.productName}</h3>
+                    <h3 className="font-semibold">{reel.product_name}</h3>
                     <p className="text-sm text-gray-600 line-clamp-2">{reel.caption}</p>
                     <div className="flex flex-wrap gap-1">
-                      {reel.tags.map((tag) => (
+                      {reel.tags?.split(', ').map((tag) => (
                         <Badge key={tag} variant="outline" className="text-xs">
                           {tag}
                         </Badge>
                       ))}
                     </div>
+                    {reel.creators && (
+                      <p className="text-xs text-gray-500">@{reel.creators.instagram_handle}</p>
+                    )}
                   </div>
                   <Button
                     variant="outline"
@@ -527,7 +540,7 @@ const AdminDashboard = () => {
               
               {reels.length === 0 && (
                 <div className="text-center py-8 text-gray-500">
-                  No reels yet. Add your first reel to get started!
+                  No reels yet. Sync an Instagram profile to get started!
                 </div>
               )}
             </div>

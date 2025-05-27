@@ -1,1 +1,5 @@
+
 project_id = "myjvnypoqzjhantdhitd"
+
+[functions.fetch-instagram-reels]
+verify_jwt = false
