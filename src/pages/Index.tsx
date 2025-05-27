@@ -106,6 +106,19 @@ const Index = () => {
     )
   );
 
+  const handleTagToggle = (tag: string) => {
+    setSelectedCategories(prev => 
+      prev.includes(tag) 
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    );
+  };
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setSelectedCategories([]);
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100">
@@ -159,16 +172,17 @@ const Index = () => {
                   Filters
                 </Button>
                 
-                <SortDropdown sortBy={sortBy} onSortChange={setSortBy} />
+                <SortDropdown currentSort={sortBy} onSortChange={setSortBy} />
               </div>
             </div>
             
             {showFilters && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <FilterBar
-                  categories={allCategories}
-                  selectedCategories={selectedCategories}
-                  onCategoryChange={setSelectedCategories}
+                  availableTags={allCategories}
+                  selectedTags={selectedCategories}
+                  onTagToggle={handleTagToggle}
+                  onClearFilters={handleClearFilters}
                 />
               </div>
             )}
@@ -183,10 +197,7 @@ const Index = () => {
           {(searchTerm || selectedCategories.length > 0) && (
             <Button
               variant="ghost"
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedCategories([]);
-              }}
+              onClick={handleClearFilters}
               className="text-purple-600 hover:text-purple-700"
             >
               Clear filters
@@ -219,10 +230,7 @@ const Index = () => {
               </p>
               {(searchTerm || selectedCategories.length > 0) && (
                 <Button
-                  onClick={() => {
-                    setSearchTerm('');
-                    setSelectedCategories([]);
-                  }}
+                  onClick={handleClearFilters}
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                 >
                   Clear filters
