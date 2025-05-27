@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,12 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Upload, Mail, Instagram, Sparkles, Trash2 } from 'lucide-react';
+import { Plus, Upload, Mail, Instagram, Sparkles, Trash2, Link } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import AdminLayout from '../components/AdminLayout';
 import { mockReels } from '../data/mockReels';
 import { suggestTags } from '../services/aiService';
+import { extractInstagramData, syncInstagramReels } from '../services/instagramService';
 
 const AdminDashboard = () => {
   const { isAuthenticated } = useAuth();
@@ -22,6 +22,8 @@ const AdminDashboard = () => {
   const [reels, setReels] = useState(mockReels);
   const [isAddingReel, setIsAddingReel] = useState(false);
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isExtractingFromUrl, setIsExtractingFromUrl] = useState(false);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -41,6 +43,44 @@ const AdminDashboard = () => {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleExtractFromUrl = async () => {
+    if (!formData.embedUrl.trim()) {
+      toast({
+        title: "Instagram URL required",
+        description: "Please enter an Instagram URL first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExtractingFromUrl(true);
+    try {
+      const data = await extractInstagramData(formData.embedUrl);
+      if (data) {
+        setFormData(prev => ({
+          ...prev,
+          caption: data.caption,
+          thumbnail: data.thumbnail
+        }));
+        
+        toast({
+          title: "Data extracted",
+          description: "Caption and thumbnail extracted from Instagram URL.",
+        });
+      } else {
+        throw new Error('Failed to extract data');
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to extract data from Instagram URL. Please check the URL.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExtractingFromUrl(false);
+    }
   };
 
   const handleGenerateTags = async () => {
@@ -142,10 +182,62 @@ const AdminDashboard = () => {
     });
   };
 
-  const handleSyncActions = (type: 'instagram' | 'email') => {
+  const handleSyncInstagram = async () => {
+    const demoUrls = [
+      'https://www.instagram.com/p/DJt_Q2IxQ8L/',
+      'https://www.instagram.com/p/DJ1tnuLR0s8/',
+      'https://www.instagram.com/p/DJ4SbiURkgC/',
+      'https://www.instagram.com/p/DJ63MqjxJRp/',
+      'https://www.instagram.com/p/DJ9cA6oxMTv/',
+      'https://www.instagram.com/p/DKAAxwUxiVK/'
+    ];
+
+    setIsSyncing(true);
+    try {
+      const extractedReels = await syncInstagramReels(demoUrls);
+      
+      for (const reelData of extractedReels) {
+        // Generate tags for each reel
+        const aiResponse = await suggestTags(reelData.caption);
+        
+        const newReel = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          caption: reelData.caption,
+          thumbnail: reelData.thumbnail,
+          embedUrl: reelData.embedUrl,
+          productName: aiResponse.productSuggestion || 'Featured Product',
+          affiliateLink: 'https://amazon.com/example-product',
+          tags: aiResponse.tags,
+          createdAt: new Date()
+        };
+
+        setReels(prev => {
+          // Check if reel already exists
+          const exists = prev.some(r => r.embedUrl === newReel.embedUrl);
+          if (exists) return prev;
+          return [newReel, ...prev];
+        });
+      }
+      
+      toast({
+        title: "Instagram sync completed",
+        description: `Successfully synced ${extractedReels.length} reels from Instagram.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Sync failed",
+        description: "Failed to sync reels from Instagram. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleSyncActions = (type: 'email') => {
     toast({
       title: "Sync initiated",
-      description: `${type === 'instagram' ? 'Instagram' : 'Email'} sync would start here. This is a demo version.`,
+      description: `Email sync would start here. This is a demo version.`,
     });
   };
 
@@ -194,11 +286,16 @@ const AdminDashboard = () => {
           
           <Button
             variant="outline"
-            onClick={() => handleSyncActions('instagram')}
+            onClick={handleSyncInstagram}
+            disabled={isSyncing}
             className="h-20 hover:bg-purple-50 hover:border-purple-300"
           >
-            <Instagram className="h-6 w-6 mr-2" />
-            Sync from Instagram
+            {isSyncing ? (
+              <div className="h-6 w-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-2" />
+            ) : (
+              <Instagram className="h-6 w-6 mr-2" />
+            )}
+            {isSyncing ? 'Syncing...' : 'Sync from Instagram'}
           </Button>
           
           <Button
@@ -222,6 +319,31 @@ const AdminDashboard = () => {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="embedUrl">Instagram URL</Label>
+                  <div className="flex space-x-2">
+                    <Input
+                      id="embedUrl"
+                      placeholder="https://www.instagram.com/p/..."
+                      value={formData.embedUrl}
+                      onChange={(e) => handleInputChange('embedUrl', e.target.value)}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleExtractFromUrl}
+                      disabled={isExtractingFromUrl}
+                      variant="outline"
+                    >
+                      {isExtractingFromUrl ? (
+                        <div className="h-4 w-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+                      ) : (
+                        <Link className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="caption">Caption *</Label>
@@ -247,16 +369,6 @@ const AdminDashboard = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="embedUrl">Instagram URL</Label>
-                    <Input
-                      id="embedUrl"
-                      placeholder="https://www.instagram.com/reel/..."
-                      value={formData.embedUrl}
-                      onChange={(e) => handleInputChange('embedUrl', e.target.value)}
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
                     <Label htmlFor="productName">Product Name *</Label>
                     <Input
                       id="productName"
@@ -266,17 +378,17 @@ const AdminDashboard = () => {
                       required
                     />
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="affiliateLink">Affiliate Link *</Label>
-                  <Input
-                    id="affiliateLink"
-                    placeholder="https://example.com/affiliate-link"
-                    value={formData.affiliateLink}
-                    onChange={(e) => handleInputChange('affiliateLink', e.target.value)}
-                    required
-                  />
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="affiliateLink">Affiliate Link *</Label>
+                    <Input
+                      id="affiliateLink"
+                      placeholder="https://example.com/affiliate-link"
+                      value={formData.affiliateLink}
+                      onChange={(e) => handleInputChange('affiliateLink', e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-4">
