@@ -40,8 +40,53 @@ export const fetchReelsFromDatabase = async () => {
   return data || [];
 };
 
+export const getInstagramAuthUrl = async () => {
+  console.log('Getting Instagram OAuth URL...');
+  
+  const { data, error } = await supabase.functions.invoke('fetch-instagram-reels', {
+    body: { action: 'getAuthUrl' }
+  });
+
+  if (error) {
+    console.error('Error getting Instagram auth URL:', error);
+    throw error;
+  }
+
+  return data.authUrl;
+};
+
+export const exchangeInstagramCode = async (code: string) => {
+  console.log('Exchanging Instagram authorization code...');
+  
+  const { data, error } = await supabase.functions.invoke('fetch-instagram-reels', {
+    body: { action: 'exchangeCode', code }
+  });
+
+  if (error) {
+    console.error('Error exchanging Instagram code:', error);
+    throw error;
+  }
+
+  return data;
+};
+
+export const syncInstagramWithToken = async (accessToken: string) => {
+  console.log('Syncing Instagram media with access token...');
+  
+  const { data, error } = await supabase.functions.invoke('fetch-instagram-reels', {
+    body: { action: 'fetchMedia', accessToken }
+  });
+
+  if (error) {
+    console.error('Error syncing Instagram media:', error);
+    throw error;
+  }
+
+  return data;
+};
+
 export const syncInstagramProfile = async (username: string) => {
-  console.log('Syncing Instagram profile:', username);
+  console.log('Syncing Instagram profile (fallback):', username);
   
   const { data, error } = await supabase.functions.invoke('fetch-instagram-reels', {
     body: { username }

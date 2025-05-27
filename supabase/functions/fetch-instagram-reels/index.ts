@@ -12,6 +12,11 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Instagram API credentials from environment
+const INSTAGRAM_APP_ID = Deno.env.get('INSTAGRAM_APP_ID');
+const INSTAGRAM_APP_SECRET = Deno.env.get('INSTAGRAM_APP_SECRET');
+const REDIRECT_URI = Deno.env.get('INSTAGRAM_REDIRECT_URI');
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -19,175 +24,249 @@ serve(async (req) => {
   }
 
   try {
-    const { username } = await req.json();
-    console.log('Fetching Instagram reels for username:', username);
+    const { action, code, username, accessToken } = await req.json();
+    console.log('Instagram API action:', action);
 
-    if (!username) {
+    if (action === 'getAuthUrl') {
+      // Generate Instagram OAuth URL
+      if (!INSTAGRAM_APP_ID || !REDIRECT_URI) {
+        return new Response(
+          JSON.stringify({ error: 'Instagram app credentials not configured' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const authUrl = `https://api.instagram.com/oauth/authorize?client_id=${INSTAGRAM_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI!)}&scope=user_profile,user_media&response_type=code`;
+      
       return new Response(
-        JSON.stringify({ error: 'Username is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ authUrl }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Check if creator exists, if not create them
-    let { data: creator, error: creatorError } = await supabase
-      .from('creators')
-      .select('*')
-      .eq('instagram_handle', username)
-      .single();
+    if (action === 'exchangeCode') {
+      // Exchange authorization code for access token
+      if (!code || !INSTAGRAM_APP_ID || !INSTAGRAM_APP_SECRET || !REDIRECT_URI) {
+        return new Response(
+          JSON.stringify({ error: 'Missing required parameters for token exchange' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
-    if (creatorError && creatorError.code === 'PGRST116') {
-      // Creator doesn't exist, create them
-      const { data: newCreator, error: insertError } = await supabase
+      const tokenResponse = await fetch('https://api.instagram.com/oauth/access_token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: INSTAGRAM_APP_ID,
+          client_secret: INSTAGRAM_APP_SECRET,
+          grant_type: 'authorization_code',
+          redirect_uri: REDIRECT_URI,
+          code: code,
+        }),
+      });
+
+      const tokenData = await tokenResponse.json();
+      
+      if (!tokenResponse.ok) {
+        console.error('Token exchange failed:', tokenData);
+        return new Response(
+          JSON.stringify({ error: 'Failed to exchange code for access token' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Get long-lived access token
+      const longLivedTokenResponse = await fetch(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${INSTAGRAM_APP_SECRET}&access_token=${tokenData.access_token}`);
+      const longLivedTokenData = await longLivedTokenResponse.json();
+
+      return new Response(
+        JSON.stringify({ 
+          accessToken: longLivedTokenData.access_token || tokenData.access_token,
+          userId: tokenData.user_id 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (action === 'fetchMedia') {
+      // Fetch user media using access token
+      if (!accessToken) {
+        return new Response(
+          JSON.stringify({ error: 'Access token required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Get user profile first
+      const profileResponse = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`);
+      const profileData = await profileResponse.json();
+
+      if (!profileResponse.ok) {
+        console.error('Profile fetch failed:', profileData);
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch user profile' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Get user media
+      const mediaResponse = await fetch(`https://graph.instagram.com/me/media?fields=id,caption,media_type,media_url,thumbnail_url,timestamp,permalink&access_token=${accessToken}`);
+      const mediaData = await mediaResponse.json();
+
+      if (!mediaResponse.ok) {
+        console.error('Media fetch failed:', mediaData);
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch user media' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Check if creator exists, if not create them
+      let { data: creator, error: creatorError } = await supabase
         .from('creators')
-        .insert({
-          name: username,
-          instagram_handle: username,
-          tier: 'Free'
-        })
-        .select()
+        .select('*')
+        .eq('instagram_handle', profileData.username)
         .single();
 
-      if (insertError) {
-        console.error('Error creating creator:', insertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to create creator' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      if (creatorError && creatorError.code === 'PGRST116') {
+        const { data: newCreator, error: insertError } = await supabase
+          .from('creators')
+          .insert({
+            name: profileData.username,
+            instagram_handle: profileData.username,
+            tier: 'Free'
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error creating creator:', insertError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to create creator' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        creator = newCreator;
       }
-      creator = newCreator;
-    } else if (creatorError) {
-      console.error('Error fetching creator:', creatorError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch creator' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
-    // Fetch Instagram profile page
-    const profileUrl = `https://www.instagram.com/${username}/`;
-    console.log('Fetching profile from:', profileUrl);
-
-    const response = await fetch(profileUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-      }
-    });
-
-    if (!response.ok) {
-      console.error('Failed to fetch Instagram profile:', response.status);
-      return new Response(
-        JSON.stringify({ error: 'Failed to fetch Instagram profile. Profile might be private or not exist.' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const html = await response.text();
-    
-    // Extract JSON data from the page
-    const scriptRegex = /window\._sharedData\s*=\s*({.+?});/;
-    const scriptMatch = html.match(scriptRegex);
-    
-    let reelsData = [];
-    
-    if (scriptMatch) {
-      try {
-        const sharedData = JSON.parse(scriptMatch[1]);
-        const user = sharedData?.entry_data?.ProfilePage?.[0]?.graphql?.user;
-        
-        if (user && user.edge_owner_to_timeline_media) {
-          const posts = user.edge_owner_to_timeline_media.edges;
+      // Process media and save to database
+      const reelsData = [];
+      
+      for (const media of mediaData.data || []) {
+        // Only process video content (reels)
+        if (media.media_type === 'VIDEO') {
+          // Check if this reel already exists
+          const { data: existingReel } = await supabase
+            .from('reels')
+            .select('id')
+            .eq('instagram_video_url', media.permalink)
+            .single();
           
-          for (const post of posts.slice(0, 6)) { // Limit to 6 most recent posts
-            const node = post.node;
+          if (!existingReel) {
+            const tags = extractTagsFromCaption(media.caption || '');
+            const productName = generateProductName(media.caption || '');
             
-            // Check if it's a video (reel)
-            if (node.is_video && node.video_url) {
-              const postUrl = `https://www.instagram.com/p/${node.shortcode}/`;
-              const thumbnailUrl = node.display_url;
-              const caption = node.edge_media_to_caption?.edges?.[0]?.node?.text || '';
-              
-              // Check if this reel already exists
-              const { data: existingReel } = await supabase
-                .from('reels')
-                .select('id')
-                .eq('instagram_video_url', postUrl)
-                .single();
-              
-              if (!existingReel) {
-                // Generate tags from caption
-                const tags = extractTagsFromCaption(caption);
-                const productName = generateProductName(caption);
-                
-                const reelData = {
-                  creator_id: creator.id,
-                  caption: caption.substring(0, 500), // Limit caption length
-                  thumbnail_image_url: thumbnailUrl,
-                  instagram_video_url: postUrl,
-                  product_name: productName,
-                  affiliate_link: 'https://amazon.com/example-product', // Default affiliate link
-                  tags: tags.join(', '),
-                  show_on_website: true,
-                  post_date: new Date().toISOString()
-                };
-                
-                reelsData.push(reelData);
-              }
-            }
+            const reelData = {
+              creator_id: creator.id,
+              caption: (media.caption || '').substring(0, 500),
+              thumbnail_image_url: media.thumbnail_url || media.media_url,
+              instagram_video_url: media.permalink,
+              product_name: productName,
+              affiliate_link: 'https://amazon.com/example-product',
+              tags: tags.join(', '),
+              show_on_website: true,
+              post_date: media.timestamp
+            };
+            
+            reelsData.push(reelData);
           }
         }
-      } catch (parseError) {
-        console.error('Error parsing Instagram data:', parseError);
       }
-    }
-    
-    // If we couldn't parse the new format, fall back to mock data for demo
-    if (reelsData.length === 0) {
-      console.log('Using fallback mock data for username:', username);
-      reelsData = generateMockReelsForUser(username, creator.id);
-    }
-    
-    // Insert new reels into database
-    if (reelsData.length > 0) {
-      const { data: insertedReels, error: insertError } = await supabase
-        .from('reels')
-        .insert(reelsData)
-        .select();
-      
-      if (insertError) {
-        console.error('Error inserting reels:', insertError);
+
+      // Insert new reels into database
+      if (reelsData.length > 0) {
+        const { data: insertedReels, error: insertError } = await supabase
+          .from('reels')
+          .insert(reelsData)
+          .select();
+        
+        if (insertError) {
+          console.error('Error inserting reels:', insertError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to save reels to database' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        console.log(`Successfully inserted ${insertedReels.length} new reels for ${profileData.username}`);
+        
         return new Response(
-          JSON.stringify({ error: 'Failed to save reels to database' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          JSON.stringify({ 
+            success: true, 
+            newReels: insertedReels.length,
+            message: `Successfully synced ${insertedReels.length} new reels from @${profileData.username}` 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } else {
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            newReels: 0,
+            message: `No new reels found for @${profileData.username}` 
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
+    }
+
+    // Fallback for backward compatibility - return mock data
+    if (username) {
+      console.log('Using fallback mock data for username:', username);
       
-      console.log(`Successfully inserted ${insertedReels.length} new reels for ${username}`);
+      let { data: creator } = await supabase
+        .from('creators')
+        .select('*')
+        .eq('instagram_handle', username)
+        .single();
+
+      if (!creator) {
+        const { data: newCreator } = await supabase
+          .from('creators')
+          .insert({
+            name: username,
+            instagram_handle: username,
+            tier: 'Free'
+          })
+          .select()
+          .single();
+        creator = newCreator;
+      }
+
+      const mockReels = generateMockReelsForUser(username, creator.id);
+      
+      const { data: insertedReels } = await supabase
+        .from('reels')
+        .insert(mockReels)
+        .select();
       
       return new Response(
         JSON.stringify({ 
           success: true, 
-          newReels: insertedReels.length,
-          message: `Successfully synced ${insertedReels.length} new reels from @${username}` 
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } else {
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          newReels: 0,
-          message: `No new reels found for @${username}` 
+          newReels: insertedReels?.length || 0,
+          message: `Successfully synced ${insertedReels?.length || 0} mock reels for @${username}`,
+          requiresAuth: true
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    return new Response(
+      JSON.stringify({ error: 'Invalid action or missing parameters' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error) {
     console.error('Error in fetch-instagram-reels function:', error);
@@ -201,13 +280,11 @@ serve(async (req) => {
 function extractTagsFromCaption(caption: string): string[] {
   const tags = [];
   
-  // Extract hashtags
   const hashtagMatches = caption.match(/#\w+/g);
   if (hashtagMatches) {
     tags.push(...hashtagMatches.map(tag => tag.substring(1).toLowerCase()));
   }
   
-  // Add category-based tags
   const categoryKeywords = {
     'tech': ['technology', 'gadget', 'device', 'smartphone', 'laptop', 'wireless', 'charging'],
     'beauty': ['skincare', 'makeup', 'beauty', 'serum', 'cream', 'glow'],
@@ -224,7 +301,7 @@ function extractTagsFromCaption(caption: string): string[] {
     }
   }
   
-  return [...new Set(tags)].slice(0, 8); // Limit to 8 unique tags
+  return [...new Set(tags)].slice(0, 8);
 }
 
 function generateProductName(caption: string): string {

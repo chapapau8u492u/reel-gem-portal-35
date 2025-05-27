@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Plus, Upload, Mail, Instagram, Sparkles, Trash2, Link, User } from 'luc
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import AdminLayout from '../components/AdminLayout';
+import InstagramAuth from '../components/InstagramAuth';
 import { suggestTags } from '../services/aiService';
 import { extractInstagramData } from '../services/instagramService';
 import { fetchReelsFromDatabase, syncInstagramProfile, deleteReel, DatabaseReel } from '../services/reelService';
@@ -212,7 +214,6 @@ const AdminDashboard = () => {
       const result = await syncInstagramProfile(instagramProfile);
       
       if (result.success) {
-        // Reload reels from database
         await loadReels();
         
         toast({
@@ -220,7 +221,7 @@ const AdminDashboard = () => {
           description: result.message,
         });
         
-        setInstagramProfile(''); // Clear the input
+        setInstagramProfile('');
       } else {
         throw new Error(result.error || 'Sync failed');
       }
@@ -286,12 +287,15 @@ const AdminDashboard = () => {
           </Card>
         </div>
 
-        {/* Instagram Profile Sync */}
+        {/* Instagram OAuth Integration */}
+        <InstagramAuth onSyncComplete={loadReels} />
+
+        {/* Fallback Instagram Profile Sync */}
         <Card>
           <CardHeader>
-            <CardTitle>Sync from Instagram Profile</CardTitle>
+            <CardTitle>Manual Sync (Fallback)</CardTitle>
             <CardDescription>
-              Enter an Instagram username to sync all new reels from their profile.
+              Use this if you don't have a Business Instagram account. This uses demo data.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -310,14 +314,14 @@ const AdminDashboard = () => {
                   <Button
                     onClick={handleSyncInstagramProfile}
                     disabled={isSyncing}
-                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                    variant="outline"
                   >
                     {isSyncing ? (
-                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      <div className="h-4 w-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-2" />
                     ) : (
                       <Instagram className="h-4 w-4 mr-2" />
                     )}
-                    {isSyncing ? 'Syncing...' : 'Sync Profile'}
+                    {isSyncing ? 'Syncing...' : 'Sync (Demo)'}
                   </Button>
                 </div>
               </div>
