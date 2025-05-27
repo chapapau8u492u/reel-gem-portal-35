@@ -6,13 +6,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Upload, Mail, Instagram, Sparkles, Trash2, Link } from 'lucide-react';
+import { Plus, Upload, Mail, Instagram, Sparkles, Trash2, Link, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import AdminLayout from '../components/AdminLayout';
 import { mockReels } from '../data/mockReels';
 import { suggestTags } from '../services/aiService';
-import { extractInstagramData, syncInstagramReels } from '../services/instagramService';
+import { extractInstagramData, syncInstagramProfile } from '../services/instagramService';
 
 const AdminDashboard = () => {
   const { isAuthenticated } = useAuth();
@@ -24,6 +24,7 @@ const AdminDashboard = () => {
   const [isGeneratingTags, setIsGeneratingTags] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isExtractingFromUrl, setIsExtractingFromUrl] = useState(false);
+  const [instagramProfile, setInstagramProfile] = useState('');
   
   // Form state
   const [formData, setFormData] = useState({
@@ -182,22 +183,28 @@ const AdminDashboard = () => {
     });
   };
 
-  const handleSyncInstagram = async () => {
-    const demoUrls = [
-      'https://www.instagram.com/p/DJt_Q2IxQ8L/',
-      'https://www.instagram.com/p/DJ1tnuLR0s8/',
-      'https://www.instagram.com/p/DJ4SbiURkgC/',
-      'https://www.instagram.com/p/DJ63MqjxJRp/',
-      'https://www.instagram.com/p/DJ9cA6oxMTv/',
-      'https://www.instagram.com/p/DKAAxwUxiVK/'
-    ];
+  const handleSyncInstagramProfile = async () => {
+    if (!instagramProfile.trim()) {
+      toast({
+        title: "Instagram profile required",
+        description: "Please enter an Instagram username to sync from.",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsSyncing(true);
     try {
-      const extractedReels = await syncInstagramReels(demoUrls);
+      // Get existing reel IDs to avoid duplicates
+      const existingReelIds = reels.map(reel => {
+        const match = reel.embedUrl.match(/\/p\/([A-Za-z0-9_-]+)/);
+        return match ? match[1] : null;
+      }).filter(Boolean) as string[];
+
+      const newReels = await syncInstagramProfile(instagramProfile, existingReelIds);
       
-      for (const reelData of extractedReels) {
-        // Generate tags for each reel
+      for (const reelData of newReels) {
+        // Generate tags for each new reel
         const aiResponse = await suggestTags(reelData.caption);
         
         const newReel = {
@@ -211,22 +218,17 @@ const AdminDashboard = () => {
           createdAt: new Date()
         };
 
-        setReels(prev => {
-          // Check if reel already exists
-          const exists = prev.some(r => r.embedUrl === newReel.embedUrl);
-          if (exists) return prev;
-          return [newReel, ...prev];
-        });
+        setReels(prev => [newReel, ...prev]);
       }
       
       toast({
-        title: "Instagram sync completed",
-        description: `Successfully synced ${extractedReels.length} reels from Instagram.`,
+        title: "Profile sync completed",
+        description: `Successfully synced ${newReels.length} new reels from @${instagramProfile}.`,
       });
     } catch (error) {
       toast({
         title: "Sync failed",
-        description: "Failed to sync reels from Instagram. Please try again.",
+        description: "Failed to sync reels from Instagram profile. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -274,28 +276,53 @@ const AdminDashboard = () => {
           </Card>
         </div>
 
+        {/* Instagram Profile Sync */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sync from Instagram Profile</CardTitle>
+            <CardDescription>
+              Enter an Instagram username to sync all new reels from their profile.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex space-x-4">
+              <div className="flex-1">
+                <Label htmlFor="instagramProfile">Instagram Username</Label>
+                <div className="flex space-x-2 mt-2">
+                  <User className="h-5 w-5 mt-2 text-gray-400" />
+                  <Input
+                    id="instagramProfile"
+                    placeholder="username (without @)"
+                    value={instagramProfile}
+                    onChange={(e) => setInstagramProfile(e.target.value)}
+                    className="flex-1"
+                  />
+                  <Button
+                    onClick={handleSyncInstagramProfile}
+                    disabled={isSyncing}
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                  >
+                    {isSyncing ? (
+                      <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    ) : (
+                      <Instagram className="h-4 w-4 mr-2" />
+                    )}
+                    {isSyncing ? 'Syncing...' : 'Sync Profile'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Button
             onClick={() => setIsAddingReel(true)}
             className="h-20 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
           >
             <Plus className="h-6 w-6 mr-2" />
             Add New Reel
-          </Button>
-          
-          <Button
-            variant="outline"
-            onClick={handleSyncInstagram}
-            disabled={isSyncing}
-            className="h-20 hover:bg-purple-50 hover:border-purple-300"
-          >
-            {isSyncing ? (
-              <div className="h-6 w-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin mr-2" />
-            ) : (
-              <Instagram className="h-6 w-6 mr-2" />
-            )}
-            {isSyncing ? 'Syncing...' : 'Sync from Instagram'}
           </Button>
           
           <Button
@@ -470,6 +497,10 @@ const AdminDashboard = () => {
                       src={reel.thumbnail} 
                       alt={reel.productName}
                       className="w-16 h-24 object-cover rounded"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.src = 'https://images.unsplash.com/photo-1611262588024-d12430b98920?w=400&h=600&fit=crop&crop=center';
+                      }}
                     />
                   )}
                   <div className="flex-1 space-y-2">

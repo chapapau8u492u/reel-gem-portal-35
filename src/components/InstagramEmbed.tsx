@@ -12,6 +12,7 @@ interface InstagramEmbedProps {
 const InstagramEmbed: React.FC<InstagramEmbedProps> = ({ embedUrl, thumbnail, caption }) => {
   const [showEmbed, setShowEmbed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [thumbnailError, setThumbnailError] = useState(false);
 
   const embedId = embedUrl.split('/p/')[1]?.replace('/', '');
   const embedCode = `https://www.instagram.com/p/${embedId}/embed/`;
@@ -24,6 +25,12 @@ const InstagramEmbed: React.FC<InstagramEmbedProps> = ({ embedUrl, thumbnail, ca
   const handleOpenInstagram = () => {
     window.open(embedUrl, '_blank');
   };
+
+  const handleThumbnailError = () => {
+    setThumbnailError(true);
+  };
+
+  const fallbackThumbnail = 'https://images.unsplash.com/photo-1611262588024-d12430b98920?w=400&h=600&fit=crop&crop=center';
 
   useEffect(() => {
     if (showEmbed) {
@@ -40,7 +47,11 @@ const InstagramEmbed: React.FC<InstagramEmbedProps> = ({ embedUrl, thumbnail, ca
 
       return () => {
         clearTimeout(timer);
-        document.body.removeChild(script);
+        try {
+          document.body.removeChild(script);
+        } catch (e) {
+          // Script might already be removed
+        }
       };
     }
   }, [showEmbed]);
@@ -75,9 +86,10 @@ const InstagramEmbed: React.FC<InstagramEmbedProps> = ({ embedUrl, thumbnail, ca
   return (
     <div className="relative aspect-[9/16] overflow-hidden rounded-lg group cursor-pointer">
       <img 
-        src={thumbnail} 
+        src={thumbnailError ? fallbackThumbnail : thumbnail} 
         alt={caption}
         className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+        onError={handleThumbnailError}
       />
       <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
         <Button
