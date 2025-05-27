@@ -1,13 +1,16 @@
 
 import React, { useState, useMemo } from 'react';
+import { Instagram } from 'lucide-react';
 import Header from '../components/Header';
 import FilterBar from '../components/FilterBar';
+import SortDropdown from '../components/SortDropdown';
 import ReelCard from '../components/ReelCard';
 import { mockReels } from '../data/mockReels';
 
 const Index = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [sortOption, setSortOption] = useState('newest');
 
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
@@ -17,8 +20,8 @@ const Index = () => {
     return Array.from(tags).sort();
   }, []);
 
-  const filteredReels = useMemo(() => {
-    return mockReels.filter(reel => {
+  const filteredAndSortedReels = useMemo(() => {
+    let filtered = mockReels.filter(reel => {
       const matchesSearch = searchQuery === '' || 
         reel.caption.toLowerCase().includes(searchQuery.toLowerCase()) ||
         reel.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -29,7 +32,24 @@ const Index = () => {
       
       return matchesSearch && matchesTags;
     });
-  }, [searchQuery, selectedTags]);
+
+    // Apply sorting
+    return filtered.sort((a, b) => {
+      switch (sortOption) {
+        case 'newest':
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        case 'oldest':
+          return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        case 'name':
+          return a.productName.localeCompare(b.productName);
+        case 'popular':
+          // Mock popularity based on id for demo
+          return parseInt(a.id) - parseInt(b.id);
+        default:
+          return 0;
+      }
+    });
+  }, [searchQuery, selectedTags, sortOption]);
 
   const handleTagToggle = (tag: string) => {
     setSelectedTags(prev => 
@@ -68,7 +88,7 @@ const Index = () => {
           </p>
         </div>
 
-        {filteredReels.length === 0 ? (
+        {filteredAndSortedReels.length === 0 ? (
           <div className="text-center py-12">
             <div className="text-gray-400 mb-4">
               <Instagram className="h-16 w-16 mx-auto mb-4 opacity-50" />
@@ -78,14 +98,23 @@ const Index = () => {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between mb-6">
-              <p className="text-gray-600">
-                Showing {filteredReels.length} reel{filteredReels.length !== 1 ? 's' : ''}
+            <div className="flex items-center justify-between mb-6 bg-white rounded-lg p-4 shadow-sm border">
+              <p className="text-gray-600 font-medium">
+                Showing {filteredAndSortedReels.length} reel{filteredAndSortedReels.length !== 1 ? 's' : ''}
+                {selectedTags.length > 0 && (
+                  <span className="text-purple-600 ml-1">
+                    in {selectedTags.length} categor{selectedTags.length !== 1 ? 'ies' : 'y'}
+                  </span>
+                )}
               </p>
+              <SortDropdown 
+                onSortChange={setSortOption}
+                currentSort={sortOption}
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-              {filteredReels.map((reel) => (
+              {filteredAndSortedReels.map((reel) => (
                 <ReelCard key={reel.id} reel={reel} />
               ))}
             </div>

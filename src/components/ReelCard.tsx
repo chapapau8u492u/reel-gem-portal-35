@@ -3,8 +3,9 @@ import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Play } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Reel } from '../types/reel';
+import InstagramEmbed from './InstagramEmbed';
 
 interface ReelCardProps {
   reel: Reel;
@@ -13,22 +14,11 @@ interface ReelCardProps {
 const ReelCard: React.FC<ReelCardProps> = ({ reel }) => {
   return (
     <Card className="group overflow-hidden bg-white hover:shadow-xl transition-all duration-300 hover:-translate-y-1">
-      <div className="relative aspect-[9/16] overflow-hidden">
-        <img 
-          src={reel.thumbnail} 
-          alt={reel.caption}
-          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-        />
-        <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-          <Button
-            size="lg"
-            className="bg-white/20 backdrop-blur-sm border-white/30 hover:bg-white/30"
-            onClick={() => window.open(reel.embedUrl, '_blank')}
-          >
-            <Play className="h-6 w-6 text-white" />
-          </Button>
-        </div>
-      </div>
+      <InstagramEmbed 
+        embedUrl={reel.embedUrl}
+        thumbnail={reel.thumbnail}
+        caption={reel.caption}
+      />
       
       <div className="p-4 space-y-3">
         <p className="text-sm text-gray-600 line-clamp-2 leading-relaxed">
