@@ -1,0 +1,65 @@
+
+import { Reel } from '../types/reel';
+
+export const mockReels: Reel[] = [
+  {
+    id: '1',
+    caption: 'Amazing tech gadget that changed my workflow! This wireless charging station keeps all my devices powered up. Perfect for content creators! 🔥⚡',
+    thumbnail: 'https://images.unsplash.com/photo-1611532736597-de2d4265fba3?w=400&h=600&fit=crop',
+    embedUrl: 'https://www.instagram.com/reel/sample1/',
+    productName: 'Wireless Charging Station Pro',
+    affiliateLink: 'https://example.com/charging-station',
+    tags: ['tech', 'productivity', 'gadgets'],
+    createdAt: new Date('2024-01-15'),
+  },
+  {
+    id: '2',
+    caption: 'My morning fitness routine with this incredible resistance band set! Get stronger anywhere, anytime 💪 #FitnessMotivation',
+    thumbnail: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=400&h=600&fit=crop',
+    embedUrl: 'https://www.instagram.com/reel/sample2/',
+    productName: 'Premium Resistance Band Set',
+    affiliateLink: 'https://example.com/resistance-bands',
+    tags: ['fitness', 'health', 'workout'],
+    createdAt: new Date('2024-01-12'),
+  },
+  {
+    id: '3',
+    caption: 'Skincare routine that actually works! This vitamin C serum has transformed my skin in just 2 weeks ✨🧴',
+    thumbnail: 'https://images.unsplash.com/photo-1596755389378-c31d21fd1273?w=400&h=600&fit=crop',
+    embedUrl: 'https://www.instagram.com/reel/sample3/',
+    productName: 'Vitamin C Brightening Serum',
+    affiliateLink: 'https://example.com/vitamin-c-serum',
+    tags: ['skincare', 'beauty', 'wellness'],
+    createdAt: new Date('2024-01-10'),
+  },
+  {
+    id: '4',
+    caption: 'Coffee setup of my dreams! This espresso machine makes cafe-quality drinks at home ☕️✨ Perfect for work-from-home days',
+    thumbnail: 'https://images.unsplash.com/photo-1610889556528-9a770e32642f?w=400&h=600&fit=crop',
+    embedUrl: 'https://www.instagram.com/reel/sample4/',
+    productName: 'Home Espresso Machine Deluxe',
+    affiliateLink: 'https://example.com/espresso-machine',
+    tags: ['coffee', 'home', 'lifestyle'],
+    createdAt: new Date('2024-01-08'),
+  },
+  {
+    id: '5',
+    caption: 'Game-changing noise-canceling headphones! Perfect for focus sessions and travel 🎧🚀 The sound quality is incredible',
+    thumbnail: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=400&h=600&fit=crop',
+    embedUrl: 'https://www.instagram.com/reel/sample5/',
+    productName: 'Wireless Noise-Canceling Headphones',
+    affiliateLink: 'https://example.com/headphones',
+    tags: ['tech', 'audio', 'productivity'],
+    createdAt: new Date('2024-01-05'),
+  },
+  {
+    id: '6',
+    caption: 'Plant-based protein powder that actually tastes amazing! 🌱💪 Perfect post-workout fuel for gains and recovery',
+    thumbnail: 'https://images.unsplash.com/photo-1594736797933-d0401ba2fe65?w=400&h=600&fit=crop',
+    embedUrl: 'https://www.instagram.com/reel/sample6/',
+    productName: 'Plant-Based Protein Powder',
+    affiliateLink: 'https://example.com/protein-powder',
+    tags: ['fitness', 'nutrition', 'vegan'],
+    createdAt: new Date('2024-01-03'),
+  }
+];

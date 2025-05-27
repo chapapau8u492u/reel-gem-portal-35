@@ -1,13 +1,21 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import Header from '../components/Header';
 import FilterBar from '../components/FilterBar';
 import ReelCard from '../components/ReelCard';
 import { mockReels } from '../data/mockReels';
+import { Instagram } from 'lucide-react';
 
-const Index = () => {
+const Search = () => {
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    const query = searchParams.get('q') || '';
+    setSearchQuery(query);
+  }, [searchParams]);
 
   const availableTags = useMemo(() => {
     const tags = new Set<string>();
@@ -59,13 +67,15 @@ const Index = () => {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent mb-4">
-            Discover Amazing Products
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Search Results
           </h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Curated reels featuring the best products from top creators. Find your next favorite gadget, beauty product, or lifestyle upgrade.
-          </p>
+          {searchQuery && (
+            <p className="text-gray-600">
+              Results for "{searchQuery}"
+            </p>
+          )}
         </div>
 
         {filteredReels.length === 0 ? (
@@ -80,7 +90,7 @@ const Index = () => {
           <>
             <div className="flex items-center justify-between mb-6">
               <p className="text-gray-600">
-                Showing {filteredReels.length} reel{filteredReels.length !== 1 ? 's' : ''}
+                Found {filteredReels.length} reel{filteredReels.length !== 1 ? 's' : ''}
               </p>
             </div>
 
@@ -96,4 +106,4 @@ const Index = () => {
   );
 };
 
-export default Index;
+export default Search;
